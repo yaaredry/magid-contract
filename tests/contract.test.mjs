@@ -28,15 +28,17 @@ const REQUIRED_FIELDS = new Set([
   'more-dates', 'num-hours-used', 'fee', 'fee-5.3',
 ]);
 
+// ASCII-only values: step 4 tests the generation pipeline, not Hebrew rendering.
+// Hebrew font embedding is tested manually / visually via the browser tool.
 const SAMPLE_DATA = {
-  day: '15', month: 'מרץ', name: 'ישראל ישראלי',
+  day: '15', month: 'March', name: 'Israel Israelit',
   phone: '050-1234567', fax: '03-9999999', id: '123456789',
-  email: 'israel@example.com', room: 'אולם כינוסים',
-  'type-of-rooms': 'חדרים', purpose: 'אירוע קהילתי', activity: 'הרצאה',
-  startDate: '01/01/2026 – 31/12/2026', days: 'ראשון–חמישי',
-  startTime: '09:00–17:00', 'more-dates': '',
+  email: 'israel@example.com', room: 'Hall A',
+  'type-of-rooms': 'Rooms', purpose: 'Event', activity: 'Lecture',
+  startDate: '01/01/2026 - 31/12/2026', days: 'Sun-Thu',
+  startTime: '09:00-17:00', 'more-dates': '',
   'num-hours-used': '4', fee: '2000', 'fee-5.3': '150',
-  room1: 'חדר א', room2: 'חדר ב', room3: '', room4: '',
+  room1: 'Room A', room2: 'Room B', room3: '', room4: '',
   room5: '', room6: '', room7: '',
 };
 
