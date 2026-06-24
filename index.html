@@ -362,41 +362,12 @@ function buildSummary() {
 // PDF GENERATION
 // ═══════════════════════════════════════════════════
 //
-// Coordinates extracted from the annotation rectangles you placed.
-// Each entry: { page (0-based), x, y }
-// y = bottom of annotation rect + 2pt (text baseline)
+// Coordinates come from FreeText annotations embedded in contract.pdf.
+// Each annotation's /Contents string is the field name (e.g. "day").
+// At runtime we read every annotation's rect, hide it, then draw the
+// real Hebrew value at that position — no hardcoded coordinates needed.
 //
 const FONT_SIZE = 9;
-
-const C = {
-  // ── Page 1 ──────────────────────────────────────
-  day:             { page: 0, x: 305.4, y: 644.9 },
-  month:           { page: 0, x: 212.8, y: 644.9 },
-  name:            { page: 0, x: 357.1, y: 547.4 },
-  phone:           { page: 0, x: 368.0, y: 523.4 },
-  fax:             { page: 0, x: 281.5, y: 523.4 },
-  id:              { page: 0, x: 343.2, y: 498.6 },
-  email:           { page: 0, x: 279.5, y: 482.8 },
-  'type-of-rooms': { page: 0, x: 197.6, y: 439.9 },
-  room:            { page: 0, x: 316.2, y: 393.6 },
-  purpose:         { page: 0, x: 353.7, y: 169.2 },
-  activity:        { page: 0, x: 243.4, y: 169.2 },
-  startDate:       { page: 0, x: 291.4, y: 112.1 },
-  days:            { page: 0, x: 206.2, y: 112.1 },
-  startTime:       { page: 0, x:  88.5, y: 112.1 },
-  room1:           { page: 0, x: 272.9, y: 799.6 },
-  room2:           { page: 0, x: 272.9, y: 786.9 },
-  room3:           { page: 0, x: 272.9, y: 773.4 },
-  room4:           { page: 0, x: 272.9, y: 759.5 },
-  room5:           { page: 0, x: 272.9, y: 745.1 },
-  room6:           { page: 0, x: 272.9, y: 733.3 },
-  room7:           { page: 0, x: 272.9, y: 719.2 },
-  // ── Page 2 ──────────────────────────────────────
-  'more-dates':     { page: 1, x: 281.3, y: 697.5 },
-  'num-hours-used': { page: 1, x: 144.5, y: 671.5 },
-  fee:              { page: 1, x:  98.6, y: 628.1 },
-  'fee-5.3':        { page: 1, x: 419.4, y: 565.7 },
-};
 
 async function generatePDF() {
   const btn = document.getElementById('btn-download');
@@ -410,8 +381,8 @@ async function generatePDF() {
     if (!pdfResp.ok) throw new Error('לא ניתן לטעון את contract.pdf');
     const pdfBytes = await pdfResp.arrayBuffer();
 
-    const { PDFDocument, rgb } = PDFLib;
-    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const { PDFDocument, PDFName, PDFNumber, rgb } = PDFLib;
+    const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     pdfDoc.registerFontkit(fontkit);
 
     msg.textContent = 'טוען גופן עברי...';
@@ -424,8 +395,36 @@ async function generatePDF() {
     const pages = pdfDoc.getPages();
     const black = rgb(0, 0, 0);
 
+    // Build coordinate map from FreeText annotations in the PDF
+    const coordMap = {};
+    for (let pi = 0; pi < pages.length; pi++) {
+      const pageNode = pages[pi].node;
+      const annotsObj = pageNode.get(PDFName.of('Annots'));
+      if (!annotsObj) continue;
+      const annots = pdfDoc.context.lookup(annotsObj);
+      const size = annots.size ? annots.size() : (annots.array || []).length;
+      for (let i = 0; i < size; i++) {
+        const ref = annots.get(i);
+        const dict = pdfDoc.context.lookup(ref);
+        if (!dict || !dict.get) continue;
+        const contentsObj = dict.get(PDFName.of('Contents'));
+        if (!contentsObj) continue;
+        const fieldName = contentsObj.decodeText
+          ? contentsObj.decodeText()
+          : contentsObj.asString ? contentsObj.asString() : String(contentsObj);
+        if (!fieldName) continue;
+        const rectObj = dict.get(PDFName.of('Rect'));
+        if (!rectObj) continue;
+        const llx = rectObj.get(0).asNumber();
+        const lly = rectObj.get(1).asNumber();
+        coordMap[fieldName] = { page: pi, x: llx, y: lly + 2 };
+        // Hide the annotation so the placeholder label doesn't show
+        dict.set(PDFName.of('F'), pdfDoc.context.obj(2));
+      }
+    }
+
     function draw(key, text, size) {
-      const coord = C[key];
+      const coord = coordMap[key];
       if (!coord || !text) return;
       if (coord.page >= pages.length) return;
       pages[coord.page].drawText(String(text), {
