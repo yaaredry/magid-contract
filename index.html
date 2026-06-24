@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>חוזה שכירות – מרכז קהילתי מגיד</title>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #eef2f7;
+      direction: rtl;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 32px rgba(0,0,0,.12);
+      width: 100%;
+      max-width: 660px;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #1a3e5c, #2471a3);
+      color: #fff;
+      padding: 28px 32px 22px;
+      text-align: center;
+    }
+    .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+    .header p  { font-size: 13px; opacity: .8; }
+
+    /* ── Progress bar ── */
+    .progress-track { height: 4px; background: #dde3ea; }
+    .progress-bar   { height: 4px; background: #2471a3; transition: width .35s ease; }
+
+    /* ── Step dots ── */
+    .dots { display: flex; justify-content: center; gap: 10px; padding: 18px; }
+    .dot  { width: 11px; height: 11px; border-radius: 50%; background: #cdd5de; transition: background .3s; }
+    .dot.active { background: #2471a3; }
+    .dot.done   { background: #27ae60; }
+
+    /* ── Steps ── */
+    .step { display: none; padding: 28px 32px 20px; }
+    .step.active { display: block; }
+
+    .step-title {
+      font-size: 17px; font-weight: 700; color: #1a3e5c;
+      margin-bottom: 22px; padding-bottom: 10px;
+      border-bottom: 2px solid #eef2f7;
+    }
+
+    /* ── Fields ── */
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block; font-size: 13px; font-weight: 600;
+      color: #444; margin-bottom: 5px;
+    }
+    .field .hint { font-size: 11px; color: #888; font-weight: 400; margin-right: 6px; }
+    .field input,
+    .field select {
+      width: 100%; padding: 10px 13px;
+      border: 1.5px solid #cdd5de; border-radius: 8px;
+      font-size: 15px; font-family: inherit;
+      direction: rtl; color: #222;
+      transition: border-color .2s;
+    }
+    .field input:focus,
+    .field select:focus { outline: none; border-color: #2471a3; }
+
+    .row { display: flex; gap: 14px; }
+    .row .field { flex: 1; }
+
+    /* ── Summary ── */
+    .summary {
+      background: #f5f8fc; border-radius: 10px;
+      padding: 18px 20px; margin-bottom: 22px;
+      font-size: 13.5px;
+    }
+    .summary-row {
+      display: flex; justify-content: space-between;
+      padding: 6px 0; border-bottom: 1px solid #e8edf2;
+    }
+    .summary-row:last-child { border-bottom: none; }
+    .summary-row .lbl { color: #666; }
+    .summary-row .val { font-weight: 600; color: #222; text-align: left; max-width: 60%; }
+
+    /* ── Buttons ── */
+    .nav {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 16px 32px 20px;
+      border-top: 1px solid #eef2f7;
+      background: #f9fafc;
+    }
+    .step-label { font-size: 13px; color: #888; }
+
+    .btn {
+      padding: 10px 26px; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: all .2s; font-family: inherit;
+    }
+    .btn-back {
+      background: #fff; color: #2471a3;
+      border: 2px solid #2471a3;
+    }
+    .btn-back:hover { background: #eaf3fb; }
+
+    .btn-next {
+      background: #2471a3; color: #fff;
+    }
+    .btn-next:hover { background: #1a5c8a; }
+
+    .btn-download {
+      display: block; width: 100%;
+      padding: 14px; margin-top: 4px;
+      background: #27ae60; color: #fff;
+      font-size: 16px; border-radius: 10px;
+      border: none; cursor: pointer; font-family: inherit; font-weight: 700;
+      transition: background .2s;
+    }
+    .btn-download:hover  { background: #1f9150; }
+    .btn-download:disabled { background: #8ec8a6; cursor: wait; }
+
+    /* ── Error / loading ── */
+    #status-msg {
+      text-align: center; font-size: 13px; color: #888;
+      margin-top: 10px; min-height: 18px;
+    }
+    #status-msg.err { color: #c0392b; }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>מרכז קהילתי מגיד</h1>
+    <p>מילוי חוזה לשימוש בשטחי המרכז</p>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-track">
+    <div class="progress-bar" id="progress-bar" style="width:25%"></div>
+  </div>
+
+  <!-- Step dots -->
+  <div class="dots">
+    <div class="dot active" id="dot-1"></div>
+    <div class="dot"        id="dot-2"></div>
+    <div class="dot"        id="dot-3"></div>
+    <div class="dot"        id="dot-4"></div>
+  </div>
+
+  <!-- ─────────────────────────────────────── -->
+  <!-- STEP 1 – Date & Second Party           -->
+  <!-- ─────────────────────────────────────── -->
+  <div class="step active" id="step-1">
+    <div class="step-title">תאריך החוזה ופרטי המשתמש</div>
+
+    <div class="row">
+      <div class="field">
+        <label>ביום <span class="hint">(יום בחודש)</span></label>
+        <input type="number" id="f-day" min="1" max="31" placeholder="15" />
+      </div>
+      <div class="field">
+        <label>לחודש <span class="hint">(שם החודש)</span></label>
+        <input type="text" id="f-month" placeholder="ינואר" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>לבין <span class="hint">(שם מלא / שם ארגון)</span></label>
+      <input type="text" id="f-name" placeholder="ישראל ישראלי / עמותת הדוגמא" />
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>טלפון</label>
+        <input type="tel" id="f-phone" placeholder="050-0000000" />
+      </div>
+      <div class="field">
+        <label>ח.פ / ת.ז</label>
+        <input type="text" id="f-id" placeholder="123456789" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>דואר אלקטרוני</label>
+      <input type="email" id="f-email" placeholder="example@email.com" />
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────── -->
+  <!-- STEP 2 – Rental Details                -->
+  <!-- ─────────────────────────────────────── -->
+  <div class="step" id="step-2">
+    <div class="step-title">פרטי השכירות</div>
+
+    <div class="field">
+      <label>המשתמש ביקש לשכור <span class="hint">(שם החדר / אולם)</span></label>
+      <input type="text" id="f-room" placeholder='אולם כינוסים, חדר 3, וכד&apos;' />
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>מטרת השימוש עבור</label>
+        <input type="text" id="f-purpose" placeholder="אירוע, קורס, כנס..." />
+      </div>
+      <div class="field">
+        <label>לצורך <span class="hint">(הפעילות הספציפית)</span></label>
+        <input type="text" id="f-activity" placeholder="הרצאה, ריקוד, ספורט..." />
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>בין התאריכים – מ</label>
+        <input type="date" id="f-start-date" />
+      </div>
+      <div class="field">
+        <label>עד</label>
+        <input type="date" id="f-end-date" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>בין הימים <span class="hint">(ימי השבוע)</span></label>
+      <input type="text" id="f-days" placeholder="ראשון–חמישי / כל יום שישי" />
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>בין השעות – מ</label>
+        <input type="time" id="f-start-time" />
+      </div>
+      <div class="field">
+        <label>עד</label>
+        <input type="time" id="f-end-time" />
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────── -->
+  <!-- STEP 3 – Payment                       -->
+  <!-- ─────────────────────────────────────── -->
+  <div class="step" id="step-3">
+    <div class="step-title">תמורה ותשלום</div>
+
+    <div class="field">
+      <label>עבור <span class="hint">(מינימום שעות שימוש מחויבות)</span></label>
+      <input type="number" id="f-min-hours" min="1" placeholder="4" />
+    </div>
+
+    <div class="field">
+      <label>בסך של <span class="hint">(דמי שימוש חודשיים / שנתיים – ₪)</span></label>
+      <input type="number" id="f-fee" min="0" placeholder="2000" />
+    </div>
+
+    <div class="field">
+      <label>סך של <span class="hint">(תעריף שעתי נוסף – ₪)</span></label>
+      <input type="number" id="f-hourly" min="0" placeholder="150" />
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────── -->
+  <!-- STEP 4 – Summary & Download            -->
+  <!-- ─────────────────────────────────────── -->
+  <div class="step" id="step-4">
+    <div class="step-title">סיכום ופקת חוזה</div>
+    <div class="summary" id="summary"></div>
+    <button class="btn-download" id="btn-download" onclick="generatePDF()">
+      ⬇&nbsp; הורד חוזה ממולא
+    </button>
+    <div id="status-msg"></div>
+  </div>
+
+  <!-- Navigation -->
+  <div class="nav">
+    <button class="btn btn-back" id="btn-back" style="visibility:hidden" onclick="prevStep()">→ חזור</button>
+    <span class="step-label" id="step-label">שלב 1 מתוך 4</span>
+    <button class="btn btn-next" id="btn-next" onclick="nextStep()">הבא ←</button>
+  </div>
+
+</div><!-- /card -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// WIZARD LOGIC
+// ═══════════════════════════════════════════════════════════════
+let current = 1;
+const TOTAL = 4;
+
+function updateUI() {
+  for (let i = 1; i <= TOTAL; i++) {
+    document.getElementById(`step-${i}`).classList.toggle('active', i === current);
+    const dot = document.getElementById(`dot-${i}`);
+    dot.className = 'dot' + (i < current ? ' done' : i === current ? ' active' : '');
+  }
+  document.getElementById('progress-bar').style.width = (current / TOTAL * 100) + '%';
+  document.getElementById('step-label').textContent = `שלב ${current} מתוך ${TOTAL}`;
+  document.getElementById('btn-back').style.visibility = current > 1 ? 'visible' : 'hidden';
+  document.getElementById('btn-next').style.display    = current < TOTAL ? 'inline-block' : 'none';
+}
+
+function nextStep() {
+  if (current < TOTAL) {
+    current++;
+    if (current === TOTAL) buildSummary();
+    updateUI();
+  }
+}
+function prevStep() {
+  if (current > 1) { current--; updateUI(); }
+}
+
+function getData() {
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  const fmtDate = s => {
+    if (!s) return '';
+    const [y, m, d] = s.split('-');
+    return `${d}/${m}/${y}`;
+  };
+  return {
+    day:       v('f-day'),
+    month:     v('f-month'),
+    name:      v('f-name'),
+    phone:     v('f-phone'),
+    idNum:     v('f-id'),
+    email:     v('f-email'),
+    room:      v('f-room'),
+    purpose:   v('f-purpose'),
+    activity:  v('f-activity'),
+    startDate: fmtDate(v('f-start-date')),
+    endDate:   fmtDate(v('f-end-date')),
+    days:      v('f-days'),
+    startTime: v('f-start-time'),
+    endTime:   v('f-end-time'),
+    minHours:  v('f-min-hours'),
+    fee:       v('f-fee'),
+    hourly:    v('f-hourly'),
+  };
+}
+
+function buildSummary() {
+  const d = getData();
+  const rows = [
+    ['תאריך חוזה',        d.day && d.month ? `${d.day} ל${d.month}` : '—'],
+    ['שם המשתמש',         d.name  || '—'],
+    ['טלפון',             d.phone || '—'],
+    ['ח.פ / ת.ז',         d.idNum || '—'],
+    ['דואר אלקטרוני',     d.email || '—'],
+    ['חדר / מתקן',        d.room  || '—'],
+    ['מטרת שימוש',        d.purpose || '—'],
+    ['פעילות',            d.activity || '—'],
+    ['תאריכים',           [d.startDate, d.endDate].filter(Boolean).join(' – ') || '—'],
+    ['ימים',              d.days || '—'],
+    ['שעות',              d.startTime && d.endTime ? `${d.startTime} – ${d.endTime}` : '—'],
+    ['מינימום שעות',      d.minHours ? `${d.minHours} שעות` : '—'],
+    ['דמי שימוש',         d.fee     ? `₪${d.fee}`    : '—'],
+    ['תעריף שעתי נוסף',   d.hourly  ? `₪${d.hourly}` : '—'],
+  ];
+  document.getElementById('summary').innerHTML = rows.map(([l, v]) =>
+    `<div class="summary-row"><span class="lbl">${l}</span><span class="val">${v}</span></div>`
+  ).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PDF GENERATION
+// ═══════════════════════════════════════════════════════════════
+//
+// COORDINATE CALIBRATION
+// ──────────────────────
+// All coordinates are in PDF points (1 pt = 1/72 inch).
+// Origin (0, 0) is the BOTTOM-LEFT corner of the page.
+// A4 page: 595 × 842 points.
+//
+// If text appears too high/low → adjust y.
+// If text appears too far left/right → adjust x.
+//
+// To find exact positions:
+//   1. Open contract.pdf in Adobe Reader / Preview.
+//   2. Use the measurement tool (ruler) to locate each blank line.
+//   3. Note: Reader shows coordinates from top-left, so:
+//      pdf-lib y = 842 − reader_y
+//
+const FONT_SIZE = 10;
+
+// Each entry: { page (0-based), x, y }
+const C = {
+  // PAGE 1 ──────────────────────────────────────────
+  // "שנכרת בתל אביב ביום [day] לחודש [month] שנת 2026"
+  day:        { page: 0, x: 290, y: 493 },
+  month:      { page: 0, x: 175, y: 493 },
+
+  // לביין section
+  name:       { page: 0, x: 350, y: 426 },
+  phone:      { page: 0, x: 370, y: 411 },
+  idNum:      { page: 0, x: 370, y: 394 },
+  email:      { page: 0, x: 370, y: 378 },
+
+  // "המשתמש ביקש לשכור [room] במרכז"
+  room:       { page: 0, x: 200, y: 336 },
+
+  // "מטרת השימוש הינה עבור [purpose] לצורך [activity]"
+  purpose:    { page: 0, x: 330, y: 206 },
+  activity:   { page: 0, x: 152, y: 206 },
+
+  // Section 4.1 – one line: dates, days, hours
+  startDate:  { page: 0, x: 405, y: 171 },
+  endDate:    { page: 0, x: 310, y: 171 },
+  days:       { page: 0, x: 198, y: 171 },
+  startTime:  { page: 0, x: 138, y: 171 },
+  endTime:    { page: 0, x:  95, y: 171 },
+
+  // PAGE 2 ──────────────────────────────────────────
+  // "אי שימוש ... בתשלום מלא עבור [minHours] שעות"
+  minHours:   { page: 1, x: 228, y: 756 },
+
+  // Section 5.1 – "בסך של [fee] ₪"
+  fee:        { page: 1, x: 263, y: 677 },
+
+  // Section 5.3 – "סך של [hourly]"
+  hourly:     { page: 1, x: 278, y: 600 },
+};
+
+async function generatePDF() {
+  const btn = document.getElementById('btn-download');
+  const msg = document.getElementById('status-msg');
+  btn.disabled = true;
+  msg.className = '';
+  msg.textContent = 'טוען קובץ חוזה...';
+
+  try {
+    // 1. Load template PDF
+    const pdfResp = await fetch('contract.pdf');
+    if (!pdfResp.ok) throw new Error('לא ניתן לטעון את contract.pdf – ודא שהקובץ נמצא באותה תיקייה.');
+    const pdfBytes = await pdfResp.arrayBuffer();
+
+    const { PDFDocument, rgb } = PDFLib;
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    pdfDoc.registerFontkit(fontkit);
+
+    // 2. Load Hebrew font (fetched from CDN – requires internet)
+    msg.textContent = 'טוען גופן עברי...';
+    const fontUrl = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-hebrew-400-normal.woff2';
+    const fontResp = await fetch(fontUrl);
+    if (!fontResp.ok) throw new Error('לא ניתן לטעון את הגופן. ודא שיש חיבור לאינטרנט.');
+    const fontBytes = await fontResp.arrayBuffer();
+    const hebrewFont = await pdfDoc.embedFont(fontBytes);
+
+    const pages = pdfDoc.getPages();
+    const black = rgb(0, 0, 0);
+
+    function draw(text, coord, size) {
+      if (!text) return;
+      if (coord.page >= pages.length) return;
+      pages[coord.page].drawText(String(text), {
+        x: coord.x,
+        y: coord.y,
+        size: size || FONT_SIZE,
+        font: hebrewFont,
+        color: black,
+      });
+    }
+
+    // 3. Fill all fields
+    const d = getData();
+    draw(d.day,       C.day);
+    draw(d.month,     C.month);
+    draw(d.name,      C.name);
+    draw(d.phone,     C.phone);
+    draw(d.idNum,     C.idNum);
+    draw(d.email,     C.email);
+    draw(d.room,      C.room);
+    draw(d.purpose,   C.purpose);
+    draw(d.activity,  C.activity);
+    draw(d.startDate, C.startDate);
+    draw(d.endDate,   C.endDate);
+    draw(d.days,      C.days);
+    draw(d.startTime, C.startTime);
+    draw(d.endTime,   C.endTime);
+    draw(d.minHours,  C.minHours);
+    draw(d.fee   ? `${d.fee} ₪`    : '', C.fee);
+    draw(d.hourly ? `${d.hourly} ₪` : '', C.hourly);
+
+    // 4. Save & download
+    msg.textContent = 'מכין קובץ להורדה...';
+    const outBytes = await pdfDoc.save();
+    const blob = new Blob([outBytes], { type: 'application/pdf' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `חוזה_${d.name || 'ממולא'}.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+
+    msg.className = '';
+    msg.textContent = '✓ הקובץ הורד בהצלחה';
+
+  } catch (err) {
+    msg.className = 'err';
+    msg.textContent = '⚠ שגיאה: ' + err.message;
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>
