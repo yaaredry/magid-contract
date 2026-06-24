@@ -1,0 +1,40 @@
+name: Contract PDF tests
+
+on:
+  push:
+    paths:
+      - contract.pdf
+      - index.html
+      - tests/**
+      - package.json
+  pull_request:
+    paths:
+      - contract.pdf
+      - index.html
+      - tests/**
+      - package.json
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run contract tests
+        run: npm test
+
+      - name: Upload filled sample PDF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: output-sample-pdf
+          path: tests/output_sample.pdf
+          retention-days: 14

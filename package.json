@@ -1,0 +1,11 @@
+{
+  "name": "magid-contract",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node tests/contract.test.mjs"
+  },
+  "devDependencies": {
+    "pdf-lib": "^1.17.1"
+  }
+}
