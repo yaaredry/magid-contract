@@ -418,9 +418,9 @@ async function generatePDF() {
         const llx = rectObj.get(0).asNumber();
         const lly = rectObj.get(1).asNumber();
         coordMap[fieldName] = { page: pi, x: llx, y: lly + 2 };
-        // Hide the annotation so the placeholder label doesn't show
-        dict.set(PDFName.of('F'), pdfDoc.context.obj(2));
       }
+      // Remove all annotations from the page so labels don't show through
+      pageNode.delete(PDFName.of('Annots'));
     }
 
     function draw(key, text, size) {
