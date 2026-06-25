@@ -381,7 +381,7 @@ async function generatePDF() {
     if (!pdfResp.ok) throw new Error('לא ניתן לטעון את contract.pdf');
     const pdfBytes = await pdfResp.arrayBuffer();
 
-    const { PDFDocument, PDFName, PDFNumber, rgb } = PDFLib;
+    const { PDFDocument, PDFName, PDFNumber, StandardFonts, rgb } = PDFLib;
     const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     pdfDoc.registerFontkit(fontkit);
 
@@ -391,6 +391,8 @@ async function generatePDF() {
     if (!fontResp.ok) throw new Error('לא ניתן לטעון גופן – ודא חיבור אינטרנט');
     const fontBytes = await fontResp.arrayBuffer();
     const hebrewFont = await pdfDoc.embedFont(fontBytes);
+    // Helvetica handles digits, Latin, punctuation — the Hebrew WOFF2 is Hebrew-range only
+    const latinFont  = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
     const pages = pdfDoc.getPages();
     const black = rgb(0, 0, 0);
@@ -423,14 +425,19 @@ async function generatePDF() {
       pageNode.delete(PDFName.of('Annots'));
     }
 
+    const HEB_RE = /[א-׿יִ-ﭏ]/;
     function draw(key, text, size) {
       const coord = coordMap[key];
       if (!coord || !text) return;
       if (coord.page >= pages.length) return;
+      // Use the Hebrew font only when the text actually contains Hebrew characters.
+      // The CDN WOFF2 is a Hebrew-range subset and has no glyphs for digits or Latin,
+      // which causes every missing character to render as the same wrong glyph.
+      const font = HEB_RE.test(String(text)) ? hebrewFont : latinFont;
       pages[coord.page].drawText(String(text), {
         x: coord.x, y: coord.y,
         size: size || FONT_SIZE,
-        font: hebrewFont,
+        font,
         color: black,
       });
     }
