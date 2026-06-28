@@ -4,12 +4,14 @@ on:
   push:
     paths:
       - contract.pdf
+      - contract.docx
       - index.html
       - tests/**
       - package.json
   pull_request:
     paths:
       - contract.pdf
+      - contract.docx
       - index.html
       - tests/**
       - package.json

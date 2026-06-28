@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>חוזה שכירות – מרכז קהילתי מגיד</title>
-  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+  <script src="https://unpkg.com/pizzip@3.1.4/dist/pizzip.js"></script>
+  <script src="https://unpkg.com/docxtemplater@3.47.2/build/docxtemplater.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -269,7 +269,7 @@
   <div class="step" id="step-5">
     <div class="step-title">סיכום ופקת חוזה</div>
     <div class="summary" id="summary"></div>
-    <button class="btn-download" id="btn-download" onclick="generatePDF()">
+    <button class="btn-download" id="btn-download" onclick="generateDOCX()">
       ⬇&nbsp; הורד חוזה ממולא
     </button>
     <div id="status-msg"></div>
@@ -359,105 +359,46 @@ function buildSummary() {
 }
 
 // ═══════════════════════════════════════════════════
-// PDF GENERATION
+// DOCX GENERATION
 // ═══════════════════════════════════════════════════
 //
-// Coordinates come from FreeText annotations embedded in contract.pdf.
-// Each annotation's /Contents string is the field name (e.g. "day").
-// At runtime we read every annotation's rect, hide it, then draw the
-// real Hebrew value at that position — no hardcoded coordinates needed.
-//
-const FONT_SIZE = 9;
+// The template file contract.docx contains {placeholder} tags in the
+// underlined blank fields. docxtemplater replaces them with user values.
 
-async function generatePDF() {
+async function generateDOCX() {
   const btn = document.getElementById('btn-download');
   const msg = document.getElementById('status-msg');
   btn.disabled = true;
   msg.className = '';
-  msg.textContent = 'טוען קובץ חוזה...';
+  msg.textContent = 'טוען תבנית חוזה...';
 
   try {
-    const pdfResp = await fetch('contract.pdf');
-    if (!pdfResp.ok) throw new Error('לא ניתן לטעון את contract.pdf');
-    const pdfBytes = await pdfResp.arrayBuffer();
+    const resp = await fetch('contract.docx');
+    if (!resp.ok) throw new Error('לא ניתן לטעון את contract.docx');
+    const arrayBuffer = await resp.arrayBuffer();
 
-    const { PDFDocument, PDFName, PDFNumber, StandardFonts, rgb } = PDFLib;
-    const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    pdfDoc.registerFontkit(fontkit);
-
-    msg.textContent = 'טוען גופן עברי...';
-    const fontUrl = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-hebrew-400-normal.woff2';
-    const fontResp = await fetch(fontUrl);
-    if (!fontResp.ok) throw new Error('לא ניתן לטעון גופן – ודא חיבור אינטרנט');
-    const fontBytes = await fontResp.arrayBuffer();
-    const hebrewFont = await pdfDoc.embedFont(fontBytes);
-    // Helvetica handles digits, Latin, punctuation — the Hebrew WOFF2 is Hebrew-range only
-    const latinFont  = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-    const pages = pdfDoc.getPages();
-    const black = rgb(0, 0, 0);
-
-    // Build coordinate map from FreeText annotations in the PDF
-    const coordMap = {};
-    for (let pi = 0; pi < pages.length; pi++) {
-      const pageNode = pages[pi].node;
-      const annotsObj = pageNode.get(PDFName.of('Annots'));
-      if (!annotsObj) continue;
-      const annots = pdfDoc.context.lookup(annotsObj);
-      const size = annots.size ? annots.size() : (annots.array || []).length;
-      for (let i = 0; i < size; i++) {
-        const ref = annots.get(i);
-        const dict = pdfDoc.context.lookup(ref);
-        if (!dict || !dict.get) continue;
-        const contentsObj = dict.get(PDFName.of('Contents'));
-        if (!contentsObj) continue;
-        const fieldName = contentsObj.decodeText
-          ? contentsObj.decodeText()
-          : contentsObj.asString ? contentsObj.asString() : String(contentsObj);
-        if (!fieldName) continue;
-        const rectObj = dict.get(PDFName.of('Rect'));
-        if (!rectObj) continue;
-        const llx = rectObj.get(0).asNumber();
-        const lly = rectObj.get(1).asNumber();
-        coordMap[fieldName] = { page: pi, x: llx, y: lly + 2 };
-      }
-      // Remove all annotations from the page so labels don't show through
-      pageNode.delete(PDFName.of('Annots'));
-    }
-
-    const HEB_RE = /[א-׿יִ-ﭏ]/;
-    function draw(key, text, size) {
-      const coord = coordMap[key];
-      if (!coord || !text) return;
-      if (coord.page >= pages.length) return;
-      // Use the Hebrew font only when the text actually contains Hebrew characters.
-      // The CDN WOFF2 is a Hebrew-range subset and has no glyphs for digits or Latin,
-      // which causes every missing character to render as the same wrong glyph.
-      const font = HEB_RE.test(String(text)) ? hebrewFont : latinFont;
-      pages[coord.page].drawText(String(text), {
-        x: coord.x, y: coord.y,
-        size: size || FONT_SIZE,
-        font,
-        color: black,
-      });
-    }
+    msg.textContent = 'ממלא פרטים...';
+    const zip = new PizZip(arrayBuffer);
+    const doc = new window.docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+    });
 
     const d = getData();
-    Object.keys(d).forEach(key => draw(key, d[key]));
+    doc.render(d);
 
     msg.textContent = 'מכין להורדה...';
-    const out  = await pdfDoc.save();
-    const blob = new Blob([out], { type: 'application/pdf' });
-    const url  = URL.createObjectURL(blob);
+    const out  = doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const url  = URL.createObjectURL(out);
     const a    = document.createElement('a');
-    a.href = url; a.download = `חוזה_${d.name || 'ממולא'}.pdf`;
+    a.href = url; a.download = `חוזה_${d.name || 'ממולא'}.docx`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 8000);
     msg.textContent = '✓ הקובץ הורד בהצלחה';
 
   } catch (err) {
     msg.className = 'err';
-    msg.textContent = '⚠ שגיאה: ' + err.message;
+    msg.textContent = '⚠ שגיאה: ' + (err.message || String(err));
     console.error(err);
   } finally {
     btn.disabled = false;
