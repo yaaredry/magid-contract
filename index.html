@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>חוזה שכירות – מרכז קהילתי מגיד</title>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
   <script src="https://unpkg.com/pizzip@3.1.4/dist/pizzip.js"></script>
   <script src="https://unpkg.com/docxtemplater@3.47.2/build/docxtemplater.js"></script>
   <style>
@@ -109,13 +111,17 @@
     .btn-next:hover { background: #1a5c8a; }
 
     .btn-download {
-      display: block; width: 100%; padding: 14px; margin-top: 4px;
-      background: #27ae60; color: #fff; font-size: 16px;
+      display: block; width: 100%; padding: 14px; margin-top: 8px;
+      color: #fff; font-size: 16px;
       border-radius: 10px; border: none; cursor: pointer;
       font-family: inherit; font-weight: 700; transition: background .2s;
     }
-    .btn-download:hover    { background: #1f9150; }
-    .btn-download:disabled { background: #8ec8a6; cursor: wait; }
+    .btn-download.docx { background: #27ae60; }
+    .btn-download.docx:hover    { background: #1f9150; }
+    .btn-download.docx:disabled { background: #8ec8a6; cursor: wait; }
+    .btn-download.pdf  { background: #2471a3; }
+    .btn-download.pdf:hover    { background: #1a5c8a; }
+    .btn-download.pdf:disabled { background: #7fb3d3; cursor: wait; }
 
     #status-msg { text-align:center; font-size:13px; color:#888; margin-top:10px; min-height:18px; }
     #status-msg.err { color:#c0392b; }
@@ -269,8 +275,11 @@
   <div class="step" id="step-5">
     <div class="step-title">סיכום ופקת חוזה</div>
     <div class="summary" id="summary"></div>
-    <button class="btn-download" id="btn-download" onclick="generateDOCX()">
-      ⬇&nbsp; הורד חוזה ממולא
+    <button class="btn-download docx" id="btn-docx" onclick="generateDOCX()">
+      ⬇&nbsp; הורד כ-Word (.docx)
+    </button>
+    <button class="btn-download pdf" id="btn-pdf" onclick="generatePDF()">
+      ⬇&nbsp; הורד כ-PDF
     </button>
     <div id="status-msg"></div>
   </div>
@@ -365,10 +374,14 @@ function buildSummary() {
 // The template file contract.docx contains {placeholder} tags in the
 // underlined blank fields. docxtemplater replaces them with user values.
 
+function setBusy(busy) {
+  document.getElementById('btn-docx').disabled = busy;
+  document.getElementById('btn-pdf').disabled  = busy;
+}
+
 async function generateDOCX() {
-  const btn = document.getElementById('btn-download');
   const msg = document.getElementById('status-msg');
-  btn.disabled = true;
+  setBusy(true);
   msg.className = '';
   msg.textContent = 'טוען תבנית חוזה...';
 
@@ -401,7 +414,93 @@ async function generateDOCX() {
     msg.textContent = '⚠ שגיאה: ' + (err.message || String(err));
     console.error(err);
   } finally {
-    btn.disabled = false;
+    setBusy(false);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// PDF GENERATION
+// ═══════════════════════════════════════════════════
+
+const FONT_SIZE = 9;
+
+async function generatePDF() {
+  const msg = document.getElementById('status-msg');
+  setBusy(true);
+  msg.className = '';
+  msg.textContent = 'טוען קובץ חוזה...';
+
+  try {
+    const pdfResp = await fetch('contract.pdf');
+    if (!pdfResp.ok) throw new Error('לא ניתן לטעון את contract.pdf');
+    const pdfBytes = await pdfResp.arrayBuffer();
+
+    const { PDFDocument, PDFName, StandardFonts, rgb } = PDFLib;
+    const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+    pdfDoc.registerFontkit(fontkit);
+
+    msg.textContent = 'טוען גופן עברי...';
+    const fontUrl = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-hebrew-400-normal.woff2';
+    const fontResp = await fetch(fontUrl);
+    if (!fontResp.ok) throw new Error('לא ניתן לטעון גופן – ודא חיבור אינטרנט');
+    const fontBytes = await fontResp.arrayBuffer();
+    const hebrewFont = await pdfDoc.embedFont(fontBytes);
+    const latinFont  = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    const pages = pdfDoc.getPages();
+    const black = rgb(0, 0, 0);
+
+    const coordMap = {};
+    for (let pi = 0; pi < pages.length; pi++) {
+      const pageNode = pages[pi].node;
+      const annotsObj = pageNode.get(PDFName.of('Annots'));
+      if (!annotsObj) continue;
+      const annots = pdfDoc.context.lookup(annotsObj);
+      const size = annots.size ? annots.size() : (annots.array || []).length;
+      for (let i = 0; i < size; i++) {
+        const ref = annots.get(i);
+        const dict = pdfDoc.context.lookup(ref);
+        if (!dict || !dict.get) continue;
+        const contentsObj = dict.get(PDFName.of('Contents'));
+        if (!contentsObj) continue;
+        const fieldName = contentsObj.decodeText
+          ? contentsObj.decodeText()
+          : contentsObj.asString ? contentsObj.asString() : String(contentsObj);
+        if (!fieldName) continue;
+        const rectObj = dict.get(PDFName.of('Rect'));
+        if (!rectObj) continue;
+        coordMap[fieldName] = { page: pi, x: rectObj.get(0).asNumber(), y: rectObj.get(1).asNumber() + 2 };
+      }
+      pageNode.delete(PDFName.of('Annots'));
+    }
+
+    const HEB_RE = /[א-׿יִ-ﭏ]/;
+    function draw(key, text) {
+      const coord = coordMap[key];
+      if (!coord || !text) return;
+      const font = HEB_RE.test(String(text)) ? hebrewFont : latinFont;
+      pages[coord.page].drawText(String(text), { x: coord.x, y: coord.y, size: FONT_SIZE, font, color: black });
+    }
+
+    const d = getData();
+    Object.keys(d).forEach(key => draw(key, d[key]));
+
+    msg.textContent = 'מכין להורדה...';
+    const out  = await pdfDoc.save();
+    const blob = new Blob([out], { type: 'application/pdf' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `חוזה_${d.name || 'ממולא'}.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+    msg.textContent = '✓ הקובץ הורד בהצלחה';
+
+  } catch (err) {
+    msg.className = 'err';
+    msg.textContent = '⚠ שגיאה: ' + err.message;
+    console.error(err);
+  } finally {
+    setBusy(false);
   }
 }
 </script>
