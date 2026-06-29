@@ -404,7 +404,8 @@ async function generateDOCX() {
     const out  = doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     const url  = URL.createObjectURL(out);
     const a    = document.createElement('a');
-    a.href = url; a.download = `חוזה_${d.name || 'ממולא'}.docx`;
+    const today = new Date().toLocaleDateString('he-IL').replace(/\./g, '-');
+    a.href = url; a.download = `חוזה_${d.name || 'ממולא'}_${today}.docx`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 8000);
     msg.textContent = '✓ הקובץ הורד בהצלחה';
@@ -490,7 +491,8 @@ async function generatePDF() {
     const blob = new Blob([out], { type: 'application/pdf' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href = url; a.download = `חוזה_${d.name || 'ממולא'}.pdf`;
+    const today = new Date().toLocaleDateString('he-IL').replace(/\./g, '-');
+    a.href = url; a.download = `חוזה_${d.name || 'ממולא'}_${today}.pdf`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 8000);
     msg.textContent = '✓ הקובץ הורד בהצלחה';
