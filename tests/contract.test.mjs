@@ -1,194 +1,111 @@
 /**
- * Sanity tests for the Magid contract PDF tool.
+ * Sanity tests for the Magid contract DOCX tool.
  *
  * Run with:  node tests/contract.test.mjs
+ * Requires:  python3 + unzip (standard on Linux/macOS)
  *
  * What we check:
- *   1. contract.pdf is readable and has the expected page count.
- *   2. All required field annotations are present with valid positions.
- *   3. No unexpected / misspelled annotation names exist.
- *   4. Generating a filled PDF with sample data produces a valid PDF blob
- *      whose byte count is in a reasonable range.
+ *   1. contract.docx is readable and is a valid ZIP/DOCX.
+ *   2. All required {placeholder} tags are present.
+ *   3. Generating a filled DOCX with sample data produces a valid DOCX blob.
  */
 
+import { execSync, spawnSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
-import { PDFDocument, PDFName, rgb } from 'pdf-lib';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const PDF_PATH = join(__dir, '..', 'contract.pdf');
+const DOCX_PATH = join(__dir, '..', 'contract.docx');
+const OUT_PATH  = join(__dir, 'output_sample.docx');
 
-// ── expected fields ────────────────────────────────────────────────────────
-const REQUIRED_FIELDS = new Set([
-  'day', 'month', 'name', 'phone', 'fax', 'id', 'email',
+// ── expected placeholders ───────────────────────────────────────────────────
+const REQUIRED_PLACEHOLDERS = new Set([
+  'day', 'month', 'name', 'phone', 'fax',
   'room', 'type-of-rooms', 'purpose', 'activity',
   'startDate', 'days', 'startTime',
-  'room1', 'room2', 'room3', 'room4', 'room5', 'room6', 'room7',
   'more-dates', 'num-hours-used', 'fee', 'fee-5.3',
 ]);
 
-// ASCII-only values: step 4 tests the generation pipeline, not Hebrew rendering.
-// Hebrew font embedding is tested manually / visually via the browser tool.
 const SAMPLE_DATA = {
   day: '15', month: 'March', name: 'Israel Israelit',
-  phone: '050-1234567', fax: '03-9999999', id: '123456789',
-  email: 'israel@example.com', room: 'Hall A',
-  'type-of-rooms': 'Rooms', purpose: 'Event', activity: 'Lecture',
-  startDate: '01/01/2026 - 31/12/2026', days: 'Sun-Thu',
-  startTime: '09:00-17:00', 'more-dates': '',
-  'num-hours-used': '4', fee: '2000', 'fee-5.3': '150',
-  room1: 'Room A', room2: 'Room B', room3: '', room4: '',
-  room5: '', room6: '', room7: '',
+  phone: '050-1234567', fax: '03-9999999',
+  room: 'Hall A', 'type-of-rooms': 'Rooms', purpose: 'Event', activity: 'Lecture',
+  startDate: '01/01/2026', days: 'Sun-Thu', startTime: '09:00-17:00',
+  'more-dates': '', 'num-hours-used': '4', fee: '2000', 'fee-5.3': '150',
 };
 
 // ── helpers ────────────────────────────────────────────────────────────────
-let passed = 0;
-let failed = 0;
+let passed = 0, failed = 0;
 
 function assert(condition, label, detail = '') {
-  if (condition) {
-    console.log(`  ✓  ${label}`);
-    passed++;
-  } else {
-    console.error(`  ✗  ${label}${detail ? ': ' + detail : ''}`);
-    failed++;
-  }
+  if (condition) { console.log(`  ✓  ${label}`); passed++; }
+  else { console.error(`  ✗  ${label}${detail ? ': ' + detail : ''}`); failed++; }
 }
 
-async function readAnnotations(pdfDoc) {
-  const map = {};
-  const pages = pdfDoc.getPages();
-  for (let pi = 0; pi < pages.length; pi++) {
-    const annotsObj = pages[pi].node.get(PDFName.of('Annots'));
-    if (!annotsObj) continue;
-    const annots = pdfDoc.context.lookup(annotsObj);
-    const size = annots.size ? annots.size() : 0;
-    for (let i = 0; i < size; i++) {
-      const dict = pdfDoc.context.lookup(annots.get(i));
-      if (!dict?.get) continue;
-      const c = dict.get(PDFName.of('Contents'));
-      if (!c) continue;
-      const name = c.decodeText ? c.decodeText() : c.asString?.() ?? '';
-      const rect = dict.get(PDFName.of('Rect'));
-      if (!rect) continue;
-      map[name] = {
-        page: pi,
-        x: rect.get(0).asNumber(),
-        y: rect.get(1).asNumber() + 2,
-        w: rect.get(2).asNumber() - rect.get(0).asNumber(),
-        h: rect.get(3).asNumber() - rect.get(1).asNumber(),
-      };
-    }
-  }
-  return map;
+function extractPlaceholders(xml) {
+  return new Set((xml.match(/\{([^}]+)\}/g) || []).map(m => m.slice(1, -1)));
 }
 
 // ── test suite ─────────────────────────────────────────────────────────────
-
 async function main() {
-  console.log('\nMagid Contract – PDF sanity tests\n');
-  const pdfBytes = readFileSync(PDF_PATH);
+  console.log('\nMagid Contract – DOCX sanity tests\n');
 
-  // ── 1. Basic PDF structure ───────────────────────────────────────────────
-  console.log('1. PDF structure');
-  let pdfDoc;
-  try {
-    pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    assert(true, 'contract.pdf loads without error');
-  } catch (e) {
-    assert(false, 'contract.pdf loads without error', e.message);
-    process.exit(1);
+  // ── 1. Basic DOCX structure ──────────────────────────────────────────────
+  console.log('1. DOCX structure');
+
+  assert(readFileSync(DOCX_PATH).length > 1000, 'contract.docx exists and has content');
+
+  const unzip = spawnSync('unzip', ['-p', DOCX_PATH, 'word/document.xml'], { encoding: 'utf8' });
+  assert(unzip.status === 0, 'contract.docx is a valid ZIP');
+  if (unzip.status !== 0) { console.error(unzip.stderr); process.exit(1); }
+
+  const xmlText = unzip.stdout;
+  assert(xmlText.length > 1000, `document.xml has content`, `${xmlText.length} chars`);
+
+  // ── 2. Placeholder presence ──────────────────────────────────────────────
+  console.log('\n2. Placeholder tags');
+  const found = extractPlaceholders(xmlText);
+  assert(found.size > 0, 'at least one {placeholder} found');
+
+  for (const name of REQUIRED_PLACEHOLDERS) {
+    assert(found.has(name), `{${name}} present`);
   }
 
-  const pageCount = pdfDoc.getPageCount();
-  assert(pageCount >= 2, `has at least 2 pages`, `got ${pageCount}`);
+  const unknown = [...found].filter(n => !REQUIRED_PLACEHOLDERS.has(n));
+  if (unknown.length) console.log(`  ⚠  Unknown placeholders: ${unknown.join(', ')}`);
 
-  const pages = pdfDoc.getPages();
-  for (let i = 0; i < Math.min(pageCount, 2); i++) {
-    const { width, height } = pages[i].getSize();
-    assert(width > 400 && height > 600, `page ${i + 1} is a reasonable size`,
-      `${width.toFixed(0)}×${height.toFixed(0)} pt`);
-  }
+  // ── 3. DOCX generation with sample data ─────────────────────────────────
+  console.log('\n3. DOCX generation with sample data');
 
-  // ── 2. Annotation presence ───────────────────────────────────────────────
-  console.log('\n2. Field annotations');
-  const annots = await readAnnotations(pdfDoc);
-  const foundNames = new Set(Object.keys(annots));
-
-  assert(foundNames.size > 0, 'at least one FreeText annotation found');
-
-  for (const name of REQUIRED_FIELDS) {
-    assert(foundNames.has(name), `annotation "${name}" exists`);
-  }
-
-  // Warn about unknown annotations (not a failure, just informational)
-  const unknown = [...foundNames].filter(n => !REQUIRED_FIELDS.has(n));
-  if (unknown.length) {
-    console.log(`  ⚠  Unknown annotations (not in REQUIRED_FIELDS): ${unknown.join(', ')}`);
-  }
-
-  // ── 3. Annotation geometry ───────────────────────────────────────────────
-  console.log('\n3. Annotation geometry');
-  const { width: pw, height: ph } = pages[0].getSize();
-
-  for (const [name, coord] of Object.entries(annots)) {
-    const onValidPage = coord.page < pageCount;
-    assert(onValidPage, `"${name}" page index in range`, `page ${coord.page}`);
-    if (!onValidPage) continue;
-
-    const pageH = pdfDoc.getPages()[coord.page].getSize().height;
-    const pageW = pdfDoc.getPages()[coord.page].getSize().width;
-    assert(
-      coord.x >= 0 && coord.x <= pageW && coord.y >= 0 && coord.y <= pageH,
-      `"${name}" position within page bounds`,
-      `x=${coord.x.toFixed(1)} y=${coord.y.toFixed(1)}`
-    );
-  }
-
-  // ── 4. PDF generation ────────────────────────────────────────────────────
-  console.log('\n4. PDF generation with sample data');
-
-  // Minimal font stub — we can't fetch from CDN in Node, so we use pdf-lib's
-  // built-in Helvetica just for the generation test (positions still come
-  // from annotations; font correctness is a manual / visual check).
-  const pdfDoc2 = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-  const pages2 = pdfDoc2.getPages();
-  const annots2 = await readAnnotations(pdfDoc2);
-  const font = await pdfDoc2.embedFont('Helvetica'); // Latin-only stub for CI
-  const black = rgb(0, 0, 0);
-
-  let drawn = 0;
+  let filledXml = xmlText;
   for (const [key, value] of Object.entries(SAMPLE_DATA)) {
-    const coord = annots2[key];
-    if (!coord || !value) continue;
-    pages2[coord.page].drawText(value, {
-      x: coord.x, y: coord.y, size: 9, font, color: black,
-    });
-    drawn++;
-  }
-  assert(drawn > 0, `drew text for ${drawn} non-empty fields`);
-
-  const outBytes = await pdfDoc2.save();
-  assert(outBytes.length > 50_000, 'output PDF is at least 50 KB',
-    `got ${(outBytes.length / 1024).toFixed(0)} KB`);
-  assert(outBytes.length < 10_000_000, 'output PDF is under 10 MB',
-    `got ${(outBytes.length / 1024 / 1024).toFixed(1)} MB`);
-
-  // Verify the output is a valid PDF
-  let outDoc;
-  try {
-    outDoc = await PDFDocument.load(outBytes);
-    assert(outDoc.getPageCount() === pageCount,
-      'output PDF has same page count as template');
-  } catch (e) {
-    assert(false, 'output PDF re-loads without error', e.message);
+    filledXml = filledXml.replaceAll(`{${key}}`, value);
   }
 
-  // Save output for manual inspection
-  const outPath = join(__dir, 'output_sample.pdf');
-  writeFileSync(outPath, outBytes);
-  console.log(`\n  Output saved to tests/output_sample.pdf for manual review`);
+  const unfilled = [...extractPlaceholders(filledXml)].filter(p => REQUIRED_PLACEHOLDERS.has(p));
+  assert(unfilled.length === 0, 'all required placeholders replaced', unfilled.join(', '));
+
+  // Use Python to swap word/document.xml inside the ZIP (no npm needed)
+  const pyScript = `
+import zipfile, shutil, sys
+src, dst, xml_content = sys.argv[1], sys.argv[2], sys.stdin.read()
+shutil.copy(src, dst)
+with zipfile.ZipFile(dst, 'a') as z:
+    z.writestr('word/document.xml', xml_content)
+`.trim();
+
+  const py = spawnSync('python3', ['-c', pyScript, DOCX_PATH, OUT_PATH],
+    { input: filledXml, encoding: 'utf8' });
+  assert(py.status === 0, 'output DOCX written successfully', py.stderr);
+
+  const outSize = readFileSync(OUT_PATH).length;
+  assert(outSize > 10_000, 'output DOCX is at least 10 KB', `${(outSize/1024).toFixed(0)} KB`);
+
+  const check = spawnSync('unzip', ['-p', OUT_PATH, 'word/document.xml'], { encoding: 'utf8' });
+  assert(check.status === 0, 'output DOCX re-loads and has document.xml');
+
+  console.log(`\n  Output saved to tests/output_sample.docx for manual review`);
 
   // ── Summary ───────────────────────────────────────────────────────────────
   console.log(`\n${'─'.repeat(50)}`);
