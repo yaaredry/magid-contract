@@ -493,9 +493,12 @@ async function generatePDF() {
     await html2pdf().set({
       filename,
       margin: [10, 15],
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    }).from(container).save();
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      enableLinks: false
+    }).from(container).toPdf().get('pdf').then(pdf => {
+      pdf.save(filename);
+    });
 
     document.body.removeChild(container);
     msg.textContent = '✓ קובץ PDF הורד בהצלחה';
