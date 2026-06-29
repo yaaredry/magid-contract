@@ -505,7 +505,15 @@ async function generatePDF() {
       remaining -= pageH;
       if (remaining > 0) { pdf.addPage(); y -= pageH; }
     }
-    pdf.save(filename);
+    const pdfBlob = pdf.output('blob');
+    const url = URL.createObjectURL(pdfBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 
     document.body.removeChild(container);
     msg.textContent = '✓ קובץ PDF הורד בהצלחה';
