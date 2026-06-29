@@ -7,7 +7,8 @@
   <script src="https://unpkg.com/pizzip@3.1.4/dist/pizzip.js"></script>
   <script src="https://unpkg.com/docxtemplater@3.47.2/build/docxtemplater.js"></script>
   <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
-  <script src="https://unpkg.com/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script>
+  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -490,15 +491,21 @@ async function generatePDF() {
     container.innerHTML = result.value;
     document.body.appendChild(container);
 
-    await html2pdf().set({
-      filename,
-      margin: [10, 15],
-      html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      enableLinks: false
-    }).from(container).toPdf().get('pdf').then(pdf => {
-      pdf.save(filename);
-    });
+    const canvas = await html2canvas(container, { scale: 2, useCORS: true, logging: false });
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const imgH = (canvas.height * pageW) / canvas.width;
+    let remaining = imgH;
+    let y = 0;
+    while (remaining > 0) {
+      pdf.addImage(imgData, 'JPEG', 0, y, pageW, imgH);
+      remaining -= pageH;
+      if (remaining > 0) { pdf.addPage(); y -= pageH; }
+    }
+    pdf.save(filename);
 
     document.body.removeChild(container);
     msg.textContent = '✓ קובץ PDF הורד בהצלחה';
