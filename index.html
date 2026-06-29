@@ -124,6 +124,14 @@
 
     #status-msg { text-align:center; font-size:13px; color:#888; margin-top:10px; min-height:18px; }
     #status-msg.err { color:#c0392b; }
+
+    .btn-demo {
+      display: block; width: 100%; padding: 8px; margin-bottom: 16px;
+      background: #f0f0f0; color: #666; font-size: 13px;
+      border-radius: 8px; border: 1px dashed #bbb; cursor: pointer;
+      font-family: inherit; transition: background .2s;
+    }
+    .btn-demo:hover { background: #e4e4e4; color: #333; }
   </style>
 </head>
 <body>
@@ -149,6 +157,7 @@
   <!-- ── STEP 1: Date & Renter ── -->
   <div class="step active" id="step-1">
     <div class="step-title">תאריך החוזה ופרטי המשתמש</div>
+    <button class="btn-demo" onclick="fillDemo()">✏️ מלא פרטי דוגמה</button>
 
     <div class="row">
       <div class="field">
@@ -312,6 +321,32 @@ function updateUI() {
 
 function nextStep() { if (current < TOTAL) { current++; if (current === TOTAL) buildSummary(); updateUI(); } }
 function prevStep() { if (current > 1)     { current--; updateUI(); } }
+
+function fillDemo() {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  set('f-day',           '15');
+  set('f-month',         'ינואר');
+  set('f-name',          'ישראל ישראלי');
+  set('f-phone',         '050-1234567');
+  set('f-fax',           '03-9999999');
+  set('f-id',            '123456789');
+  set('f-email',         'israel@example.com');
+  set('f-room',          'אולם א');
+  set('f-type-of-rooms', 'אולמות');
+  set('f-purpose',       'חוג ריקוד');
+  set('f-activity',      'הרצאה');
+  set('f-startDate',     '01/01/2026 – 31/12/2026');
+  set('f-days',          'ראשון–חמישי');
+  set('f-startTime',     '09:00–17:00');
+  set('f-more-dates',    '');
+  set('f-num-hours-used','4');
+  set('f-fee',           '2000');
+  set('f-fee-5-3',       '150');
+  set('f-room1',         'חדר 1');
+  set('f-room2',         'חדר 2');
+  // jump straight to the summary step
+  goTo(5);
+}
 
 function getData() {
   const v = id => (document.getElementById(id)?.value || '').trim();
