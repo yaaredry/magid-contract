@@ -7,6 +7,7 @@
   <script src="https://unpkg.com/pizzip@3.1.4/dist/pizzip.js"></script>
   <script src="https://unpkg.com/docxtemplater@3.47.2/build/docxtemplater.js"></script>
   <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://unpkg.com/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -287,7 +288,7 @@
       ⬇&nbsp; הורד כ-Word (.docx)
     </button>
     <button class="btn-download pdf" id="btn-pdf" onclick="generatePDF()">
-      🖨&nbsp; הדפס / שמור כ-PDF
+      ⬇&nbsp; הורד כ-PDF
     </button>
     <div id="status-msg"></div>
   </div>
@@ -477,31 +478,27 @@ async function generatePDF() {
     const filledBlob = doc.getZip().generate({ type: 'arraybuffer' });
 
     // 2. Convert filled DOCX to HTML via mammoth
-    msg.textContent = 'ממיר לתצוגת הדפסה...';
+    msg.textContent = 'ממיר ל-PDF...';
     const result = await mammoth.convertToHtml({ arrayBuffer: filledBlob });
 
-    // 3. Open a styled print window — browser Save as PDF preserves Hebrew correctly
+    // 3. Render HTML into a temporary container and download as PDF
     const _d = new Date(); const today = `${_d.getDate()}-${_d.getMonth()+1}-${_d.getFullYear()}`;
-    const printWin = window.open('', '_blank');
-    printWin.document.write(`<!DOCTYPE html>
-<html dir="rtl" lang="he">
-<head>
-  <meta charset="UTF-8"/>
-  <title>חוזה_${d.name || 'ממולא'}_${today}</title>
-  <style>
-    body { font-family: Arial, sans-serif; direction: rtl; margin: 20mm 15mm; font-size: 10pt; }
-    u { text-decoration: underline; }
-    p { margin: 4px 0; }
-    @media print { body { margin: 10mm; } }
-  </style>
-</head>
-<body>
-${result.value}
-<script>window.onload = function(){ window.print(); }<\/script>
-</body>
-</html>`);
-    printWin.document.close();
-    msg.textContent = '✓ נפתחה חלון הדפסה — בחר "שמור כ-PDF"';
+    const filename = `חוזה_${d.name || 'ממולא'}_${today}.pdf`;
+
+    const container = document.createElement('div');
+    container.style.cssText = 'font-family:Arial,sans-serif;direction:rtl;font-size:10pt;color:#000;background:#fff;padding:15mm;';
+    container.innerHTML = result.value;
+    document.body.appendChild(container);
+
+    await html2pdf().set({
+      filename,
+      margin: [10, 15],
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    }).from(container).save();
+
+    document.body.removeChild(container);
+    msg.textContent = '✓ קובץ PDF הורד בהצלחה';
 
   } catch (err) {
     msg.className = 'err';
