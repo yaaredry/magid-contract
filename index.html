@@ -4,10 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>חוזה שכירות – מרכז קהילתי מגיד</title>
-  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
   <script src="https://unpkg.com/pizzip@3.1.4/dist/pizzip.js"></script>
   <script src="https://unpkg.com/docxtemplater@3.47.2/build/docxtemplater.js"></script>
+  <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -279,7 +278,7 @@
       ⬇&nbsp; הורד כ-Word (.docx)
     </button>
     <button class="btn-download pdf" id="btn-pdf" onclick="generatePDF()">
-      ⬇&nbsp; הורד כ-PDF
+      🖨&nbsp; הדפס / שמור כ-PDF
     </button>
     <div id="status-msg"></div>
   </div>
@@ -404,7 +403,8 @@ async function generateDOCX() {
     const out  = doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     const url  = URL.createObjectURL(out);
     const a    = document.createElement('a');
-    a.href = url; a.download = `חוזה_${d.name || 'ממולא'}.docx`;
+    const today = new Date().toLocaleDateString('he-IL').replace(/\./g, '-');
+    a.href = url; a.download = `חוזה_${d.name || 'ממולא'}_${today}.docx`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 8000);
     msg.textContent = '✓ הקובץ הורד בהצלחה';
@@ -422,78 +422,51 @@ async function generateDOCX() {
 // PDF GENERATION
 // ═══════════════════════════════════════════════════
 
-const FONT_SIZE = 9;
-
 async function generatePDF() {
   const msg = document.getElementById('status-msg');
   setBusy(true);
   msg.className = '';
-  msg.textContent = 'טוען קובץ חוזה...';
+  msg.textContent = 'ממלא חוזה...';
 
   try {
-    const pdfResp = await fetch('contract.pdf');
-    if (!pdfResp.ok) throw new Error('לא ניתן לטעון את contract.pdf');
-    const pdfBytes = await pdfResp.arrayBuffer();
+    // 1. Fill the DOCX template (same as generateDOCX)
+    const resp = await fetch('contract.docx');
+    if (!resp.ok) throw new Error('לא ניתן לטעון את contract.docx');
+    const arrayBuffer = await resp.arrayBuffer();
 
-    const { PDFDocument, PDFName, StandardFonts, rgb } = PDFLib;
-    const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    pdfDoc.registerFontkit(fontkit);
-
-    msg.textContent = 'טוען גופן עברי...';
-    const fontUrl = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-hebrew-400-normal.woff2';
-    const fontResp = await fetch(fontUrl);
-    if (!fontResp.ok) throw new Error('לא ניתן לטעון גופן – ודא חיבור אינטרנט');
-    const fontBytes = await fontResp.arrayBuffer();
-    const hebrewFont = await pdfDoc.embedFont(fontBytes);
-    const latinFont  = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-    const pages = pdfDoc.getPages();
-    const black = rgb(0, 0, 0);
-
-    const coordMap = {};
-    for (let pi = 0; pi < pages.length; pi++) {
-      const pageNode = pages[pi].node;
-      const annotsObj = pageNode.get(PDFName.of('Annots'));
-      if (!annotsObj) continue;
-      const annots = pdfDoc.context.lookup(annotsObj);
-      const size = annots.size ? annots.size() : (annots.array || []).length;
-      for (let i = 0; i < size; i++) {
-        const ref = annots.get(i);
-        const dict = pdfDoc.context.lookup(ref);
-        if (!dict || !dict.get) continue;
-        const contentsObj = dict.get(PDFName.of('Contents'));
-        if (!contentsObj) continue;
-        const fieldName = contentsObj.decodeText
-          ? contentsObj.decodeText()
-          : contentsObj.asString ? contentsObj.asString() : String(contentsObj);
-        if (!fieldName) continue;
-        const rectObj = dict.get(PDFName.of('Rect'));
-        if (!rectObj) continue;
-        coordMap[fieldName] = { page: pi, x: rectObj.get(0).asNumber(), y: rectObj.get(1).asNumber() + 2 };
-      }
-      pageNode.delete(PDFName.of('Annots'));
-    }
-
-    const HEB_RE = /[א-׿יִ-ﭏ]/;
-    function draw(key, text) {
-      const coord = coordMap[key];
-      if (!coord || !text) return;
-      const font = HEB_RE.test(String(text)) ? hebrewFont : latinFont;
-      pages[coord.page].drawText(String(text), { x: coord.x, y: coord.y, size: FONT_SIZE, font, color: black });
-    }
-
+    const zip = new PizZip(arrayBuffer);
+    const doc = new window.docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
     const d = getData();
-    Object.keys(d).forEach(key => draw(key, d[key]));
+    doc.render(d);
 
-    msg.textContent = 'מכין להורדה...';
-    const out  = await pdfDoc.save();
-    const blob = new Blob([out], { type: 'application/pdf' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = `חוזה_${d.name || 'ממולא'}.pdf`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 8000);
-    msg.textContent = '✓ הקובץ הורד בהצלחה';
+    const filledBlob = doc.getZip().generate({ type: 'arraybuffer' });
+
+    // 2. Convert filled DOCX to HTML via mammoth
+    msg.textContent = 'ממיר לתצוגת הדפסה...';
+    const result = await mammoth.convertToHtml({ arrayBuffer: filledBlob });
+
+    // 3. Open a styled print window — browser Save as PDF preserves Hebrew correctly
+    const today = new Date().toLocaleDateString('he-IL').replace(/\./g, '-');
+    const printWin = window.open('', '_blank');
+    printWin.document.write(`<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8"/>
+  <title>חוזה_${d.name || 'ממולא'}_${today}</title>
+  <style>
+    body { font-family: Arial, sans-serif; direction: rtl; margin: 20mm 15mm; font-size: 10pt; }
+    u { text-decoration: underline; }
+    p { margin: 4px 0; }
+    @media print { body { margin: 10mm; } }
+  </style>
+</head>
+<body>
+${result.value}
+<script>window.onload = function(){ window.print(); }<\/script>
+</body>
+</html>`);
+    printWin.document.close();
+    msg.textContent = '✓ נפתחה חלון הדפסה — בחר "שמור כ-PDF"';
 
   } catch (err) {
     msg.className = 'err';
