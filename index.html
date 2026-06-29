@@ -403,7 +403,7 @@ async function generateDOCX() {
     const out  = doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     const url  = URL.createObjectURL(out);
     const a    = document.createElement('a');
-    const today = new Date().toLocaleDateString('he-IL').replace(/\./g, '-');
+    const _d = new Date(); const today = `${_d.getDate()}-${_d.getMonth()+1}-${_d.getFullYear()}`;
     a.href = url; a.download = `חוזה_${d.name || 'ממולא'}_${today}.docx`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 8000);
@@ -446,7 +446,7 @@ async function generatePDF() {
     const result = await mammoth.convertToHtml({ arrayBuffer: filledBlob });
 
     // 3. Open a styled print window — browser Save as PDF preserves Hebrew correctly
-    const today = new Date().toLocaleDateString('he-IL').replace(/\./g, '-');
+    const _d = new Date(); const today = `${_d.getDate()}-${_d.getMonth()+1}-${_d.getFullYear()}`;
     const printWin = window.open('', '_blank');
     printWin.document.write(`<!DOCTYPE html>
 <html dir="rtl" lang="he">
