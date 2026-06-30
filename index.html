@@ -6,9 +6,6 @@
   <title>חוזה שכירות – מרכז קהילתי מגיד</title>
   <script src="https://unpkg.com/pizzip@3.1.4/dist/pizzip.js"></script>
   <script src="https://unpkg.com/docxtemplater@3.47.2/build/docxtemplater.js"></script>
-  <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
-  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -120,9 +117,11 @@
     .btn-download.docx { background: #27ae60; }
     .btn-download.docx:hover    { background: #1f9150; }
     .btn-download.docx:disabled { background: #8ec8a6; cursor: wait; }
-    .btn-download.pdf  { background: #2471a3; }
-    .btn-download.pdf:hover    { background: #1a5c8a; }
-    .btn-download.pdf:disabled { background: #7fb3d3; cursor: wait; }
+    .pdf-note {
+      margin-top: 14px; padding: 12px 14px;
+      background: #f4f8fb; border: 1px solid #d6e4ef; border-radius: 8px;
+      font-size: 14px; line-height: 1.6; color: #34495e;
+    }
 
     #status-msg { text-align:center; font-size:13px; color:#888; margin-top:10px; min-height:18px; }
     #status-msg.err { color:#c0392b; }
@@ -286,12 +285,13 @@
     <div class="step-title">סיכום ופקת חוזה</div>
     <div class="summary" id="summary"></div>
     <button class="btn-download docx" id="btn-docx" onclick="generateDOCX()">
-      ⬇&nbsp; הורד כ-Word (.docx)
-    </button>
-    <button class="btn-download pdf" id="btn-pdf" onclick="generatePDF()">
-      ⬇&nbsp; הורד כ-PDF
+      ⬇&nbsp; הורד את החוזה (Word .docx)
     </button>
     <div id="status-msg"></div>
+    <p class="pdf-note">
+      💡 רוצים PDF? פתחו את הקובץ ב-Word או ב-Pages ובחרו
+      <strong>"ייצא ל-PDF"</strong> (File → Export / קובץ → ייצוא).
+    </p>
   </div>
 
   <div class="nav">
@@ -347,7 +347,9 @@ function fillDemo() {
   set('f-room1',         'חדר 1');
   set('f-room2',         'חדר 2');
   // jump straight to the summary step
-  goTo(5);
+  current = TOTAL;
+  buildSummary();
+  updateUI();
 }
 
 function getData() {
@@ -449,78 +451,6 @@ async function generateDOCX() {
   } catch (err) {
     msg.className = 'err';
     msg.textContent = '⚠ שגיאה: ' + (err.message || String(err));
-    console.error(err);
-  } finally {
-    setBusy(false);
-  }
-}
-
-// ═══════════════════════════════════════════════════
-// PDF GENERATION
-// ═══════════════════════════════════════════════════
-
-async function generatePDF() {
-  const msg = document.getElementById('status-msg');
-  setBusy(true);
-  msg.className = '';
-  msg.textContent = 'ממלא חוזה...';
-
-  try {
-    // 1. Fill the DOCX template (same as generateDOCX)
-    const resp = await fetch('contract.docx');
-    if (!resp.ok) throw new Error('לא ניתן לטעון את contract.docx');
-    const arrayBuffer = await resp.arrayBuffer();
-
-    const zip = new PizZip(arrayBuffer);
-    const doc = new window.docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-    const d = getData();
-    doc.render(d);
-
-    const filledBlob = doc.getZip().generate({ type: 'arraybuffer' });
-
-    // 2. Convert filled DOCX to HTML via mammoth
-    msg.textContent = 'ממיר ל-PDF...';
-    const result = await mammoth.convertToHtml({ arrayBuffer: filledBlob });
-
-    // 3. Render HTML into a temporary container and download as PDF
-    const _d = new Date(); const today = `${_d.getDate()}-${_d.getMonth()+1}-${_d.getFullYear()}`;
-    const filename = `חוזה_${d.name || 'ממולא'}_${today}.pdf`;
-
-    const container = document.createElement('div');
-    container.style.cssText = 'font-family:Arial,sans-serif;direction:rtl;font-size:10pt;color:#000;background:#fff;padding:15mm;';
-    container.innerHTML = result.value;
-    document.body.appendChild(container);
-
-    const canvas = await html2canvas(container, { scale: 2, useCORS: true, logging: false });
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const imgH = (canvas.height * pageW) / canvas.width;
-    let remaining = imgH;
-    let y = 0;
-    while (remaining > 0) {
-      pdf.addImage(imgData, 'JPEG', 0, y, pageW, imgH);
-      remaining -= pageH;
-      if (remaining > 0) { pdf.addPage(); y -= pageH; }
-    }
-    const pdfBlob = pdf.output('blob');
-    const url = URL.createObjectURL(pdfBlob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-    document.body.removeChild(container);
-    msg.textContent = '✓ קובץ PDF הורד בהצלחה';
-
-  } catch (err) {
-    msg.className = 'err';
-    msg.textContent = '⚠ שגיאה: ' + err.message;
     console.error(err);
   } finally {
     setBusy(false);
