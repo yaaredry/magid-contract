@@ -444,25 +444,13 @@ function setBusy(busy) {
   document.getElementById('btn-docx').disabled = busy;
 }
 
-// pdf-lib draws glyphs in raw character order with no Unicode bidi support.
-// Hebrew has no shaping/ligatures, so a simple visual reorder is enough:
-// reverse the order of Hebrew runs (and their internal character order),
-// while leaving digit/Latin runs internally untouched (numbers stay LTR).
+// Real-world PDF viewers (Acrobat, macOS Preview, Chrome/Edge) apply the
+// Unicode Bidi Algorithm themselves when laying out text, so drawing plain
+// logical-order text renders correctly in them. (Manually pre-reversing
+// here made Hebrew look mirrored in those viewers — it was only "correct"
+// in poppler, which does not apply bidi and was used for local testing.)
 function toVisualOrder(str) {
-  if (!str) return str;
-  const isHebrew = ch => /[֐-׿]/.test(ch);
-  const runs = [];
-  let current = '', currentType = null;
-  for (const ch of str) {
-    const type = isHebrew(ch) ? 'he' : 'other';
-    if (type !== currentType && current) { runs.push({ type: currentType, text: current }); current = ''; }
-    currentType = type;
-    current += ch;
-  }
-  if (current) runs.push({ type: currentType, text: current });
-  return runs.slice().reverse()
-    .map(r => r.type === 'he' ? [...r.text].reverse().join('') : r.text)
-    .join('');
+  return str;
 }
 
 async function generatePDF() {
