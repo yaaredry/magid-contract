@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>חוזה שכירות – מרכז קהילתי מגיד</title>
-  <script src="https://unpkg.com/pizzip@3.1.4/dist/pizzip.js"></script>
-  <script src="https://unpkg.com/docxtemplater@3.47.2/build/docxtemplater.js"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -117,11 +117,6 @@
     .btn-download.docx { background: #27ae60; }
     .btn-download.docx:hover    { background: #1f9150; }
     .btn-download.docx:disabled { background: #8ec8a6; cursor: wait; }
-    .pdf-note {
-      margin-top: 14px; padding: 12px 14px;
-      background: #f4f8fb; border: 1px solid #d6e4ef; border-radius: 8px;
-      font-size: 14px; line-height: 1.6; color: #34495e;
-    }
 
     #status-msg { text-align:center; font-size:13px; color:#888; margin-top:10px; min-height:18px; }
     #status-msg.err { color:#c0392b; }
@@ -284,14 +279,10 @@
   <div class="step" id="step-5">
     <div class="step-title">סיכום ופקת חוזה</div>
     <div class="summary" id="summary"></div>
-    <button class="btn-download docx" id="btn-docx" onclick="generateDOCX()">
-      ⬇&nbsp; הורד את החוזה (Word .docx)
+    <button class="btn-download docx" id="btn-docx" onclick="generatePDF()">
+      ⬇&nbsp; הורד את החוזה (PDF)
     </button>
     <div id="status-msg"></div>
-    <p class="pdf-note">
-      💡 רוצים PDF? פתחו את הקובץ ב-Word או ב-Pages ובחרו
-      <strong>"ייצא ל-PDF"</strong> (File → Export / קובץ → ייצוא).
-    </p>
   </div>
 
   <div class="nav">
@@ -406,44 +397,134 @@ function buildSummary() {
 }
 
 // ═══════════════════════════════════════════════════
-// DOCX GENERATION
+// PDF GENERATION
 // ═══════════════════════════════════════════════════
 //
-// The template file contract.docx contains {placeholder} tags in the
-// underlined blank fields. docxtemplater replaces them with user values.
+// contract.pdf is a real fillable PDF form (AcroForm text fields).
+// We fill each field's value directly via pdf-lib — no image conversion,
+// no DOCX, no per-OS font/layout drift. This map connects our wizard's
+// data keys to the actual field names embedded in the PDF.
+
+const PDF_FIELD_MAP = {
+  day: 'text_9fesm',
+  month: 'text_10huco',
+  name: 'text_11time',
+  phone: 'text_12tpzw',
+  id: 'text_13nnzf',
+  email: 'text_14rwiy',
+  room: 'text_15zlth',
+  activity: 'text_17tnvd',
+  purpose: 'text_16qolh',
+  startTime: 'text_20oeig',
+  days: 'text_19ojsm',
+  startDate: 'text_18pvmq',
+  'num-hours-used': 'text_21xmik',
+  fee: 'text_22nqtk',
+  'fee-5.3': 'text_23amre',
+  room1: 'text_1buwf',
+  room2: 'text_3famp',
+  room3: 'text_4ybcd',
+  room4: 'text_5fodf',
+  room5: 'text_6vcpi',
+  room6: 'text_7opcn',
+  room7: 'text_8kcnk',
+  // fax, type-of-rooms, and more-dates have no fillable field in the
+  // current template (decorative dashes only) — to be added later.
+};
+
+// 0-indexed page number for each field (page 1 fields, then page 2 fields).
+const PDF_FIELD_PAGE = {
+  day: 0, month: 0, name: 0, phone: 0, id: 0, email: 0, room: 0,
+  activity: 0, purpose: 0, startTime: 0, days: 0, startDate: 0,
+  room1: 0, room2: 0, room3: 0, room4: 0, room5: 0, room6: 0, room7: 0,
+  'num-hours-used': 1, fee: 1, 'fee-5.3': 1,
+};
 
 function setBusy(busy) {
   document.getElementById('btn-docx').disabled = busy;
 }
 
-async function generateDOCX() {
+// Real-world PDF viewers (Acrobat, macOS Preview, Chrome/Edge) apply the
+// Unicode Bidi Algorithm themselves when laying out text, so drawing plain
+// logical-order text renders correctly in them. (Manually pre-reversing
+// here made Hebrew look mirrored in those viewers — it was only "correct"
+// in poppler, which does not apply bidi and was used for local testing.)
+function toVisualOrder(str) {
+  return str;
+}
+
+async function generatePDF() {
   const msg = document.getElementById('status-msg');
   setBusy(true);
   msg.className = '';
   msg.textContent = 'טוען תבנית חוזה...';
 
   try {
-    const resp = await fetch('contract.docx');
-    if (!resp.ok) throw new Error('לא ניתן לטעון את contract.docx');
-    const arrayBuffer = await resp.arrayBuffer();
+    const { PDFDocument, rgb } = PDFLib;
+
+    const [pdfBytes, fontBytes] = await Promise.all([
+      fetch('contract.pdf').then(r => { if (!r.ok) throw new Error('לא ניתן לטעון את contract.pdf'); return r.arrayBuffer(); }),
+      fetch('fonts/NotoSansHebrew-Regular.ttf').then(r => { if (!r.ok) throw new Error('לא ניתן לטעון את הפונט'); return r.arrayBuffer(); }),
+    ]);
 
     msg.textContent = 'ממלא פרטים...';
-    const zip = new PizZip(arrayBuffer);
-    const doc = new window.docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-    });
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    pdfDoc.registerFontkit(fontkit);
+    const hebrewFont = await pdfDoc.embedFont(fontBytes);
 
+    const form = pdfDoc.getForm();
+    const pages = pdfDoc.getPages();
     const d = getData();
-    doc.render(d);
+
+    // Draw each value directly on the page at the field's own rectangle,
+    // instead of relying on the AcroForm field's own appearance-generation
+    // (which does not reliably shrink text to fit narrow boxes). We compute
+    // our own font size to fit, then flatten the (still-empty) form fields
+    // afterward so only our drawn text remains — a clean, non-interactive
+    // final contract instead of highlighted fillable boxes.
+    for (const [key, fieldName] of Object.entries(PDF_FIELD_MAP)) {
+      const value = d[key];
+      if (!value) continue;
+      try {
+        const field = form.getTextField(fieldName);
+        const widget = field.acroField.getWidgets()[0];
+        const rect = widget.getRectangle();
+        const page = pages[PDF_FIELD_PAGE[key] ?? 0];
+        const visualValue = toVisualOrder(value);
+
+        const maxSize = 10, minSize = 4, padding = 4;
+        const naturalWidth = hebrewFont.widthOfTextAtSize(visualValue, maxSize);
+        const fontSize = naturalWidth > rect.width - padding
+          ? Math.max(minSize, (rect.width - padding) / naturalWidth * maxSize)
+          : maxSize;
+
+        const textWidth = hebrewFont.widthOfTextAtSize(visualValue, fontSize);
+        const x = rect.x + Math.max(0, (rect.width - textWidth) / 2); // centered
+        const y = rect.y + (rect.height - fontSize) / 2 + fontSize * 0.15;
+
+        page.drawText(visualValue, { x, y, size: fontSize, font: hebrewFont, color: rgb(0, 0, 0) });
+      } catch (e) {
+        console.warn('Field not found or failed to fill:', fieldName, e);
+      }
+    }
+
+    // Remove the interactive field widgets now that their values are baked
+    // directly into the page — leaves a clean, non-fillable final PDF
+    // instead of highlighted form boxes (including any left unfilled).
+    for (const name of Object.values(PDF_FIELD_MAP)) {
+      try { form.removeField(form.getField(name)); } catch (e) { /* already gone */ }
+    }
 
     msg.textContent = 'מכין להורדה...';
-    const out  = doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-    const url  = URL.createObjectURL(out);
-    const a    = document.createElement('a');
+    const out = await pdfDoc.save();
+    const blob = new Blob([out], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
     const _d = new Date(); const today = `${_d.getDate()}-${_d.getMonth()+1}-${_d.getFullYear()}`;
-    a.href = url; a.download = `חוזה_${d.name || 'ממולא'}_${today}.docx`;
+    a.href = url; a.download = `חוזה_${d.name || 'ממולא'}_${today}.pdf`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 8000);
     msg.textContent = '✓ הקובץ הורד בהצלחה';
 

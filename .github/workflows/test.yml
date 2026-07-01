@@ -1,15 +1,17 @@
-name: Contract DOCX tests
+name: Contract PDF tests
 
 on:
   push:
     paths:
-      - contract.docx
+      - contract.pdf
+      - fonts/**
       - index.html
       - tests/**
       - package.json
   pull_request:
     paths:
-      - contract.docx
+      - contract.pdf
+      - fonts/**
       - index.html
       - tests/**
       - package.json
@@ -24,16 +26,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies
-        run: npm install
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Python dependencies
+        run: pip install pypdf
 
       - name: Run contract tests
         run: npm test
-
-      - name: Upload filled sample DOCX
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: output-sample-docx
-          path: tests/output_sample.docx
-          retention-days: 14
